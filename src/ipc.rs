@@ -562,7 +562,7 @@ impl IpcSelectionResult {
 /// [IpcSender]: struct.IpcSender.html
 /// [to]: #method.to
 pub struct OpaqueIpcMessage {
-    data: Vec<u8>,
+    pub data: Vec<u8>,
     os_ipc_channels: Vec<OsOpaqueIpcChannel>,
     os_ipc_shared_memory_regions: Vec<Option<OsIpcSharedMemory>>,
 }
@@ -577,7 +577,7 @@ impl Debug for OpaqueIpcMessage {
 }
 
 impl OpaqueIpcMessage {
-    fn new(data: Vec<u8>,
+    pub fn new(data: Vec<u8>,
            os_ipc_channels: Vec<OsOpaqueIpcChannel>,
            os_ipc_shared_memory_regions: Vec<OsIpcSharedMemory>)
            -> OpaqueIpcMessage {
@@ -645,7 +645,7 @@ impl Serialize for OpaqueIpcSender {
 
 #[derive(Debug)]
 pub struct OpaqueIpcReceiver {
-    os_receiver: OsIpcReceiver,
+    pub os_receiver: OsIpcReceiver,
 }
 
 impl OpaqueIpcReceiver {

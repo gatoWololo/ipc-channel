@@ -57,17 +57,22 @@ impl RouterProxy {
         }
     }
 
-    /// Add a new (receiver, callback) pair to the router, and send a wakeup message
-    /// to the router.
-    pub fn add_route(&self, receiver: OpaqueIpcReceiver, callback: RouterHandler) {
+
+    pub fn add_route<T>(&self, receiver: IpcReceiver<T>, mut callback: RouterHandler<T>)
+    where T: for<'de> Deserialize<'de> + Serialize + Send + 'static {
         let comm = self.comm.lock().unwrap();
 
+        // TODO how does this new shutdown mechanism affect our determinsm?
         if comm.shutdown {
             return;
         }
 
+        // This is where the magic happens. Once it has turned into a OpaqueIpcMessage and sent across the channel we
+        // have no way of knowing what the correct type T to turn our message back should be! Instead we "keep track"
+        // of this information here using a closure that will "remember" the type via a call to to::<T>().
+        let opaque_wrapper = move |msg: OpaqueIpcMessage| callback(msg.to::<T>().unwrap());
         comm.msg_sender
-            .send(RouterMsg::AddRoute(receiver, callback))
+            .send(RouterMsg::AddRoute(receiver.to_opaque(), Box::new(opaque_wrapper)))
             .unwrap();
         comm.wakeup_sender.send(()).unwrap();
     }
@@ -107,8 +112,8 @@ impl RouterProxy {
         T: for<'de> Deserialize<'de> + Serialize + Send + 'static,
     {
         self.add_route(
-            ipc_receiver.to_opaque(),
-            Box::new(move |message| drop(crossbeam_sender.send(message.to::<T>().unwrap()))),
+            ipc_receiver,
+            Box::new(move |message| drop(crossbeam_sender.send(message))),
         )
     }
 
@@ -143,7 +148,7 @@ struct Router {
     /// Set of all receivers which have been registered for us to select on.
     ipc_receiver_set: IpcReceiverSet,
     /// Maps ids to their handler functions.
-    handlers: HashMap<u64, RouterHandler>,
+    handlers: HashMap<u64, OpaqueRouterHandler>,
 }
 
 impl Router {
@@ -208,10 +213,11 @@ impl Router {
 enum RouterMsg {
     /// Register the receiver OpaqueIpcReceiver for listening for events on.
     /// When a message comes from this receiver, call RouterHandler.
-    AddRoute(OpaqueIpcReceiver, RouterHandler),
+    AddRoute(OpaqueIpcReceiver, OpaqueRouterHandler),
     /// Shutdown the router, providing a sender to send an acknowledgement.
     Shutdown(Sender<()>),
 }
 
 /// Function to call when a new event is received from the corresponding receiver.
-pub type RouterHandler = Box<dyn FnMut(OpaqueIpcMessage) + Send>;
+pub type RouterHandler<T> = Box<dyn FnMut(T) + Send>;
+pub type OpaqueRouterHandler = Box<dyn FnMut(OpaqueIpcMessage) + Send>;
